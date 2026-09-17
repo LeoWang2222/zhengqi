@@ -13,14 +13,14 @@
 
 ## 2. 核心产品逻辑（改代码前必须理解）
 
-- **数据模型**：全部数据在浏览器 `localStorage`，key = `zhengqi_v1`，结构 `{ records: { "YYYY-MM-DD": { type: "success"|"relapse", note: string, ts: number } } }`。无账号、无服务器，隐私不出设备。
+- **数据模型**：全部数据在浏览器 `localStorage`，key = `zhengqi_v1`，结构 `{ records: { "YYYY-MM-DD": { type: "success"|"relapse", note: string, ts: number } } }`。导入前自动备份 key = `zhengqi_pre_import_backup_v1`。无账号、无服务器，隐私不出设备。
 - **打卡流程**（核心交互）：
   1. 首页「今日打卡」→ 底部弹窗二选一：「今日守住了」/「我破戒了」
   2. 守住 → 心得体会**选填**；破戒 → 教训**必填**（空提交会抖动拦截，这是用户明确要求的硬约束，不要改成选填）
   3. 破戒记录会使连续天数清零重算
 - **「戒第 X 天」口径**：从最近一次破戒日的次日算起（无破戒则从最早一条记录算起），按日期字符串比较，不是按毫秒差。无任何记录时显示 0。
 - **每天打不打卡完全自由**，不强制、不提醒（用户明确要求）。
-- 点月历任意一天可补记/修改/删除历史记录。
+- 点月历今天或过去日期可补记/修改/删除历史记录；未来日期禁用，未来记录也不参与统计。
 
 ## 3. 代码结构
 
@@ -29,8 +29,9 @@ index.html      全部页面与弹窗的 DOM（单页三 Tab：正气 / 记录 /
 style.css       全部样式。设计基调：青绿 #5ba89c 中国风、胶囊圆角按钮、
                 按压回弹动画（cubic-bezier 弹簧曲线）、底部 Sheet 弹窗
 app.js          全部逻辑，纯原生 JS 零依赖，按注释分区：
-                数据层 → 统计计算 → 良言 → 树 SVG → 渲染 → 月历 →
-                Tab 导航 → 打卡弹窗 → 某日详情 → 统计/教训墙 → 导入导出 → Toast
+                数据层 → 统计计算 → 良言 → 树 SVG/成长进度 → 渲染 → 月历 →
+                Tab 导航 → 打卡弹窗 → 某日详情 → 冲动急救 → 统计/教训墙 →
+                安全导入导出 → Toast
 manifest.json   PWA 清单（display: standalone）
 sw.js           Service Worker，cache-first，CACHE 常量含版本号（见第 5 节）
 icons/          PNG 图标（192 / 512 / apple-touch-icon 180），
@@ -52,7 +53,7 @@ python -m http.server 8000   # 打开 http://localhost:8000
 ## 5. 发布与注意事项
 
 1. 改完代码 `git push` 到 `main`，Pages 一两分钟内自动上线。
-2. **改了任何被缓存的文件，必须同步改 `sw.js` 顶部的 `CACHE = 'zhengqi-v1'` 版本号**（如 v2），否则老用户手机上的 Service Worker 会一直发旧缓存，更新不生效。这是本项目最容易踩的坑。
+2. **改了任何被缓存的文件，必须同步改 `sw.js` 顶部的 `CACHE` 版本号**（当前为 `zhengqi-v2`，下次改为 v3），否则老用户手机上的 Service Worker 会一直发旧缓存，更新不生效。这是本项目最容易踩的坑。
 3. iOS 的 PWA 缓存更顽固，必要时让用户删除主屏幕图标重新添加。
 4. 用户数据在 localStorage：改数据结构时必须在 `loadStore()` 里做旧版本迁移，不能让用户打卡记录丢失。
 5. 不要引入需要后端的特性（云同步、账号、社区）——GitHub Pages 是纯静态托管，做不了；用户也认可单机定位。

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>正气打卡</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -26,6 +26,13 @@
         <div class="zq-value">正气值 <b id="zq-score">0</b></div>
       </div>
       <p class="hero-slogan">请保持身心清净，增长正气</p>
+      <div class="growth-progress" id="growth-progress">
+        <div class="growth-copy">
+          <span id="growth-stage">种子</span>
+          <span id="growth-next">今天播下种子</span>
+        </div>
+        <div class="growth-track" aria-hidden="true"><i id="growth-fill"></i></div>
+      </div>
     </div>
   </header>
 
@@ -39,6 +46,10 @@
     <button class="btn-checkin" id="btn-checkin">
       <span class="btn-checkin-main" id="btn-checkin-text">今日打卡</span>
       <span class="btn-checkin-sub" id="btn-checkin-sub">守住一天，便是一天的胜利</span>
+    </button>
+    <button class="btn-urge" id="btn-urge" aria-haspopup="dialog">
+      <span>此刻有冲动？</span>
+      <b>立即稳住</b>
     </button>
   </div>
 
@@ -85,22 +96,23 @@
     <button class="btn-round" id="btn-export">导出数据（JSON）</button>
     <button class="btn-round" id="btn-import">导入数据</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
+    <button class="btn-round" id="btn-restore-import" hidden>恢复导入前数据</button>
     <button class="btn-round danger" id="btn-clear">清空全部数据</button>
   </div>
   <p class="me-note">数据仅保存在本机浏览器，不会上传。清除浏览器数据前请先导出备份。</p>
 </section>
 
 <!-- 底部导航 -->
-<nav id="tabbar">
-  <button class="tab active" data-page="page-home">
+<nav id="tabbar" aria-label="主要导航">
+  <button class="tab active" data-page="page-home" aria-controls="page-home" aria-current="page">
     <svg viewBox="0 0 24 24"><path d="M12 2C12 2 5 8 5 14a7 7 0 0 0 14 0C19 8 12 2 12 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 21v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     <span>正气</span>
   </button>
-  <button class="tab" data-page="page-calendar">
+  <button class="tab" data-page="page-calendar" aria-controls="page-calendar" aria-current="false">
     <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     <span>记录</span>
   </button>
-  <button class="tab" data-page="page-me">
+  <button class="tab" data-page="page-me" aria-controls="page-me" aria-current="false">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 21c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     <span>我</span>
   </button>
@@ -108,7 +120,7 @@
 
 <!-- 打卡弹窗 -->
 <div class="modal-mask" id="modal-checkin" hidden>
-  <div class="modal-sheet">
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="checkin-title">
     <div class="sheet-grabber"></div>
 
     <div class="sheet-step" id="step-choose">
@@ -137,7 +149,7 @@
 
 <!-- 某日详情弹窗 -->
 <div class="modal-mask" id="modal-day" hidden>
-  <div class="modal-sheet">
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="day-title">
     <div class="sheet-grabber"></div>
     <h3 id="day-title"></h3>
     <div id="day-body"></div>
@@ -149,7 +161,47 @@
   </div>
 </div>
 
-<div id="toast" hidden></div>
+<!-- 冲动急救 -->
+<div class="modal-mask" id="modal-urge" hidden>
+  <div class="modal-sheet urge-sheet" role="dialog" aria-modal="true" aria-labelledby="urge-title">
+    <div class="sheet-grabber"></div>
+    <div id="urge-ready">
+      <h3 id="urge-title">先稳住这一分钟</h3>
+      <p class="urge-lead">冲动会起，也会落。现在不用做决定，只完成下面三步。</p>
+      <ol class="urge-steps">
+        <li><b>放下手机</b><span>把屏幕扣在桌面上</span></li>
+        <li><b>离开现场</b><span>站起来，换一个空间</span></li>
+        <li><b>缓慢呼吸</b><span>吸气 4 秒，呼气 6 秒</span></li>
+      </ol>
+      <button class="btn-submit" id="urge-start">开始 60 秒</button>
+      <button class="btn-text" id="urge-close">暂时不用</button>
+    </div>
+    <div id="urge-running" hidden>
+      <h3>只关注下一次呼吸</h3>
+      <div class="breath-orb" aria-hidden="true"></div>
+      <div class="urge-timer" id="urge-timer" aria-live="polite">60</div>
+      <p class="urge-status" id="urge-status">慢慢吸气，再更慢地呼气</p>
+      <button class="btn-round" id="urge-finish">我已经稳住了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入预览 -->
+<div class="modal-mask" id="modal-import" hidden>
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="sheet-grabber"></div>
+    <h3 id="import-title">确认导入数据</h3>
+    <p class="import-summary" id="import-summary"></p>
+    <p class="import-hint">合并会保留本机其他日期；日期相同的记录以导入文件为准。覆盖会先在本机保存一份可恢复备份。</p>
+    <div class="import-actions">
+      <button class="btn-submit" id="import-merge">合并导入</button>
+      <button class="btn-round danger" id="import-replace">完全覆盖</button>
+    </div>
+    <button class="btn-text" id="import-cancel">取消</button>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
 
 <script src="app.js"></script>
 </body>

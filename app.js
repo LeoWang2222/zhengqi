@@ -2,16 +2,49 @@
 
 /* ================= 数据层 ================= */
 const STORE_KEY = 'zhengqi_v1';
+const IMPORT_BACKUP_KEY = 'zhengqi_pre_import_backup_v1';
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isValidDateKey(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+function normalizeStoredData(data) {
+  if (!isPlainObject(data) || !isPlainObject(data.records)) return { records: {} };
+  const records = {};
+  for (const [key, rec] of Object.entries(data.records)) {
+    if (!isValidDateKey(key) || !isPlainObject(rec)) continue;
+    if (rec.type !== 'success' && rec.type !== 'relapse') continue;
+    records[key] = {
+      type: rec.type,
+      note: typeof rec.note === 'string' ? rec.note.slice(0, 500) : '',
+      ts: Number.isFinite(rec.ts) ? rec.ts : Date.now(),
+    };
+  }
+  return { records };
+}
 
 function loadStore() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return normalizeStoredData(JSON.parse(raw));
   } catch (e) { /* 数据损坏则重置 */ }
   return { records: {} };
 }
 function saveStore() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    return true;
+  } catch (err) {
+    showToast('保存失败，请先导出备份并检查浏览器存储空间');
+    return false;
+  }
 }
 const store = loadStore();
 
@@ -22,6 +55,10 @@ function dateKey(d) {
   return `${y}-${m}-${day}`;
 }
 function todayKey() { return dateKey(new Date()); }
+function recordKeysThroughToday() {
+  const today = todayKey();
+  return Object.keys(store.records).filter(k => k <= today).sort();
+}
 function parseKey(k) {
   const [y, m, d] = k.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -35,7 +72,7 @@ function addDays(d, n) {
 /* ================= 统计计算 ================= */
 function latestRelapseKey() {
   let latest = null;
-  for (const k in store.records) {
+  for (const k of recordKeysThroughToday()) {
     if (store.records[k].type === 'relapse' && (!latest || k > latest)) latest = k;
   }
   return latest;
@@ -44,13 +81,13 @@ function latestRelapseKey() {
 function streakStartDate() {
   const lr = latestRelapseKey();
   if (lr) return addDays(parseKey(lr), 1);
-  const keys = Object.keys(store.records).sort();
+  const keys = recordKeysThroughToday();
   if (keys.length) return parseKey(keys[0]);
   return new Date();
 }
 
 function currentStreak() {
-  if (!Object.keys(store.records).length) return 0;
+  if (!recordKeysThroughToday().length) return 0;
   const todayK = todayKey();
   let n = 0;
   let d = streakStartDate();
@@ -64,13 +101,14 @@ function currentStreak() {
 }
 
 function longestStreak() {
-  const keys = Object.keys(store.records).sort();
-  let best = currentStreak();
+  const keys = recordKeysThroughToday();
+  let best = 0;
   let run = 0;
-  let prev = null;
+  let prevDay = null;
   for (const k of keys) {
-    const d = parseKey(k);
-    if (prev && (d - prev) === 86400000) {
+    const [y, m, d] = k.split('-').map(Number);
+    const day = Date.UTC(y, m - 1, d) / 86400000;
+    if (prevDay !== null && day - prevDay === 1) {
       // 连续日期
     } else {
       run = 0;
@@ -81,19 +119,19 @@ function longestStreak() {
       run++;
       if (run > best) best = run;
     }
-    prev = d;
+    prevDay = day;
   }
   return best;
 }
 
 function successCount() {
   let n = 0;
-  for (const k in store.records) if (store.records[k].type === 'success') n++;
+  for (const k of recordKeysThroughToday()) if (store.records[k].type === 'success') n++;
   return n;
 }
 function relapseCount() {
   let n = 0;
-  for (const k in store.records) if (store.records[k].type === 'relapse') n++;
+  for (const k of recordKeysThroughToday()) if (store.records[k].type === 'relapse') n++;
   return n;
 }
 function zhengqiScore() {
@@ -194,6 +232,46 @@ function treeSVG(days) {
   return `<svg viewBox="0 0 150 150" width="150" height="150">${body}</svg>`;
 }
 
+function renderGrowthProgress(days) {
+  const stage = document.getElementById('growth-stage');
+  const next = document.getElementById('growth-next');
+  const fill = document.getElementById('growth-fill');
+  let from = 0;
+  let target = 1;
+  let stageName = '种子';
+  let nextName = '发芽';
+
+  if (days <= 0) {
+    next.textContent = '今天播下种子';
+  } else if (days < 7) {
+    from = 1;
+    target = 7;
+    stageName = '发芽';
+    nextName = '小苗';
+  } else if (days < 30) {
+    from = 7;
+    target = 30;
+    stageName = '小苗';
+    nextName = '小树';
+  } else if (days < 100) {
+    from = 30;
+    target = 100;
+    stageName = '小树';
+    nextName = '开花';
+  } else {
+    from = 100;
+    target = 100;
+    stageName = '开花大树';
+    nextName = '';
+  }
+
+  stage.textContent = stageName;
+  if (days > 0 && nextName) next.textContent = `距${nextName}还有 ${target - days} 天`;
+  if (!nextName) next.textContent = '每一天都在继续生长';
+  const percent = target === from ? 100 : Math.max(0, Math.min(100, ((days - from) / (target - from)) * 100));
+  fill.style.width = `${percent}%`;
+}
+
 /* ================= 渲染 ================= */
 function render() {
   const streak = currentStreak();
@@ -203,6 +281,7 @@ function render() {
   document.getElementById('ms-best').textContent = longestStreak();
   document.getElementById('ms-total').textContent = successCount();
   document.getElementById('tree-wrap').innerHTML = treeSVG(streak);
+  renderGrowthProgress(streak);
 
   const btn = document.getElementById('btn-checkin');
   const txt = document.getElementById('btn-checkin-text');
@@ -224,6 +303,7 @@ function render() {
 
   renderStats();
   renderLessons();
+  updateRestoreButton();
 }
 
 /* ================= 月历 ================= */
@@ -239,6 +319,9 @@ function renderCalendar() {
   const first = new Date(y, m, 1);
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const tk = todayKey();
+  const nextButton = document.getElementById('cal-next');
+  const today = new Date();
+  nextButton.disabled = y > today.getFullYear() || (y === today.getFullYear() && m >= today.getMonth());
 
   for (let i = 0; i < first.getDay(); i++) {
     const c = document.createElement('div');
@@ -249,7 +332,10 @@ function renderCalendar() {
     const key = dateKey(new Date(y, m, d));
     const rec = store.records[key];
     const c = document.createElement('button');
-    c.className = 'cal-cell' + (key === tk ? ' today' : '');
+    const isFuture = key > tk;
+    c.className = 'cal-cell' + (key === tk ? ' today' : '') + (isFuture ? ' future' : '');
+    c.disabled = isFuture;
+    c.setAttribute('aria-label', `${key}${rec ? (rec.type === 'success' ? '，守住了' : '，破戒了') : '，无记录'}`);
     let inner = `<span>${d}</span>`;
     if (rec) {
       inner += rec.type === 'success'
@@ -257,7 +343,7 @@ function renderCalendar() {
         : '<span class="mark bad">破</span>';
     }
     c.innerHTML = inner;
-    c.addEventListener('click', () => openDayModal(key));
+    if (!isFuture) c.addEventListener('click', () => openDayModal(key));
     grid.appendChild(c);
   }
 }
@@ -274,9 +360,13 @@ document.getElementById('cal-next').addEventListener('click', () => {
 /* ================= 底部导航 ================= */
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-current', 'false');
+    });
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
+    tab.setAttribute('aria-current', 'page');
     document.getElementById(tab.dataset.page).classList.add('active');
     if (tab.dataset.page === 'page-calendar') renderCalendar();
     if (tab.dataset.page === 'page-me') { renderStats(); renderLessons(); }
@@ -366,12 +456,17 @@ document.getElementById('note-submit').addEventListener('click', () => {
     showToast('破戒必须写下教训，才能重新出发');
     return;
   }
+  const previous = store.records[editingKey];
   store.records[editingKey] = {
     type: checkinType,
     note: note,
     ts: Date.now(),
   };
-  saveStore();
+  if (!saveStore()) {
+    if (previous) store.records[editingKey] = previous;
+    else delete store.records[editingKey];
+    return;
+  }
   closeCheckin();
   render();
   renderCalendar();
@@ -419,17 +514,74 @@ document.getElementById('day-edit').addEventListener('click', () => {
   openCheckin(dayKey);
 });
 document.getElementById('day-delete').addEventListener('click', () => {
+  const previous = store.records[dayKey];
   delete store.records[dayKey];
-  saveStore();
+  if (!saveStore()) {
+    store.records[dayKey] = previous;
+    return;
+  }
   modalDay.hidden = true;
   render();
   renderCalendar();
   showToast('已删除该日记录');
 });
 
+/* ================= 冲动急救 ================= */
+const modalUrge = document.getElementById('modal-urge');
+const urgeReady = document.getElementById('urge-ready');
+const urgeRunning = document.getElementById('urge-running');
+const urgeTimer = document.getElementById('urge-timer');
+const urgeStatus = document.getElementById('urge-status');
+let urgeInterval = null;
+let urgeSeconds = 60;
+
+function resetUrge() {
+  clearInterval(urgeInterval);
+  urgeInterval = null;
+  urgeSeconds = 60;
+  urgeTimer.textContent = '60';
+  urgeStatus.textContent = '慢慢吸气，再更慢地呼气';
+  document.getElementById('urge-finish').textContent = '我已经稳住了';
+  urgeReady.hidden = false;
+  urgeRunning.hidden = true;
+}
+
+function closeUrge() {
+  modalUrge.hidden = true;
+  resetUrge();
+}
+
+document.getElementById('btn-urge').addEventListener('click', () => {
+  resetUrge();
+  modalUrge.hidden = false;
+});
+document.getElementById('urge-close').addEventListener('click', closeUrge);
+document.getElementById('urge-start').addEventListener('click', () => {
+  urgeReady.hidden = true;
+  urgeRunning.hidden = false;
+  urgeInterval = setInterval(() => {
+    urgeSeconds--;
+    urgeTimer.textContent = String(urgeSeconds);
+    if (urgeSeconds <= 0) {
+      clearInterval(urgeInterval);
+      urgeInterval = null;
+      urgeStatus.textContent = '这一分钟已经过去。现在离开屏幕，去做一件具体的小事。';
+      document.getElementById('urge-finish').textContent = '结束急救';
+    }
+  }, 1000);
+});
+document.getElementById('urge-finish').addEventListener('click', () => {
+  closeUrge();
+  showToast('很好，把注意力交还给真实生活');
+});
+
 /* 点遮罩关闭 */
-[modalCheckin, modalDay].forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) m.hidden = true; });
+[modalCheckin, modalDay, modalUrge].forEach(m => {
+  m.addEventListener('click', e => {
+    if (e.target !== m) return;
+    if (m === modalUrge) closeUrge();
+    else m.hidden = true;
+  });
 });
 
 /* ================= 统计与教训墙 ================= */
@@ -442,9 +594,8 @@ function renderStats() {
 
 function renderLessons() {
   const list = document.getElementById('lesson-list');
-  const items = Object.keys(store.records)
+  const items = recordKeysThroughToday()
     .filter(k => store.records[k].type === 'relapse' && store.records[k].note)
-    .sort()
     .reverse();
   if (!items.length) {
     list.innerHTML = '<div class="lesson-empty">暂无破戒记录，继续保持</div>';
@@ -464,10 +615,49 @@ document.getElementById('btn-export').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = `zhengqi-backup-${todayKey()}.json`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   showToast('已导出备份文件');
 });
+
+const modalImport = document.getElementById('modal-import');
+let pendingImport = null;
+
+function validateImportData(data) {
+  if (!isPlainObject(data) || !isPlainObject(data.records)) throw new Error('缺少有效的 records 数据');
+  const entries = Object.entries(data.records);
+  if (entries.length > 20000) throw new Error('记录数量异常');
+  const records = {};
+  for (const [key, rec] of entries) {
+    if (!isValidDateKey(key)) throw new Error(`日期 ${key} 格式不正确`);
+    if (key > todayKey()) throw new Error(`不能导入未来日期 ${key}`);
+    if (!isPlainObject(rec) || (rec.type !== 'success' && rec.type !== 'relapse')) {
+      throw new Error(`${key} 的记录类型不正确`);
+    }
+    if (typeof rec.note !== 'string' || rec.note.length > 500) {
+      throw new Error(`${key} 的备注不正确或超过 500 字`);
+    }
+    if (rec.type === 'relapse' && !rec.note.trim()) throw new Error(`${key} 的破戒教训不能为空`);
+    if (rec.ts !== undefined && (!Number.isFinite(rec.ts) || rec.ts < 0)) throw new Error(`${key} 的时间戳不正确`);
+    records[key] = {
+      type: rec.type,
+      note: rec.note,
+      ts: Number.isFinite(rec.ts) ? rec.ts : Date.now(),
+    };
+  }
+  return { records };
+}
+
+function updateRestoreButton() {
+  document.getElementById('btn-restore-import').hidden = !localStorage.getItem(IMPORT_BACKUP_KEY);
+}
+
+function closeImportPreview() {
+  modalImport.hidden = true;
+  pendingImport = null;
+}
 
 document.getElementById('btn-import').addEventListener('click', () => {
   document.getElementById('import-file').click();
@@ -475,28 +665,84 @@ document.getElementById('btn-import').addEventListener('click', () => {
 document.getElementById('import-file').addEventListener('change', e => {
   const f = e.target.files[0];
   if (!f) return;
+  if (f.size > 2 * 1024 * 1024) {
+    showToast('导入失败：文件不能超过 2 MB');
+    e.target.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const data = JSON.parse(reader.result);
-      if (!data || typeof data.records !== 'object') throw new Error('bad format');
-      store.records = data.records;
-      saveStore();
-      render();
-      renderCalendar();
-      showToast('导入成功');
+      pendingImport = validateImportData(JSON.parse(reader.result));
+      const records = Object.values(pendingImport.records);
+      const success = records.filter(r => r.type === 'success').length;
+      const relapse = records.length - success;
+      document.getElementById('import-summary').textContent =
+        `文件包含 ${records.length} 条记录：守住 ${success} 条，破戒 ${relapse} 条。`;
+      modalImport.hidden = false;
     } catch (err) {
-      showToast('导入失败：文件格式不正确');
+      pendingImport = null;
+      showToast(`导入失败：${err.message || '文件格式不正确'}`);
     }
   };
   reader.readAsText(f);
   e.target.value = '';
 });
 
+function applyImport(mode) {
+  if (!pendingImport) return;
+  try {
+    localStorage.setItem(IMPORT_BACKUP_KEY, JSON.stringify(store));
+  } catch (err) {
+    showToast('无法创建安全备份，已取消导入');
+    return;
+  }
+  const imported = pendingImport.records;
+  const previous = store.records;
+  store.records = mode === 'merge' ? { ...store.records, ...imported } : { ...imported };
+  if (!saveStore()) {
+    store.records = previous;
+    return;
+  }
+  closeImportPreview();
+  render();
+  renderCalendar();
+  showToast(mode === 'merge' ? '数据已安全合并' : '数据已覆盖，可随时恢复');
+}
+
+document.getElementById('import-merge').addEventListener('click', () => applyImport('merge'));
+document.getElementById('import-replace').addEventListener('click', () => applyImport('replace'));
+document.getElementById('import-cancel').addEventListener('click', closeImportPreview);
+modalImport.addEventListener('click', e => { if (e.target === modalImport) closeImportPreview(); });
+
+document.getElementById('btn-restore-import').addEventListener('click', () => {
+  const raw = localStorage.getItem(IMPORT_BACKUP_KEY);
+  if (!raw || !confirm('恢复导入前的数据？当前数据会被替换。')) return;
+  try {
+    const backup = normalizeStoredData(JSON.parse(raw));
+    const previous = store.records;
+    store.records = backup.records;
+    if (!saveStore()) {
+      store.records = previous;
+      return;
+    }
+    localStorage.removeItem(IMPORT_BACKUP_KEY);
+    render();
+    renderCalendar();
+    showToast('已恢复导入前数据');
+  } catch (err) {
+    showToast('恢复失败：备份数据已损坏');
+  }
+});
+
 document.getElementById('btn-clear').addEventListener('click', () => {
   if (confirm('确定要清空全部数据吗？此操作不可恢复！')) {
+    const previous = store.records;
     store.records = {};
-    saveStore();
+    if (!saveStore()) {
+      store.records = previous;
+      return;
+    }
     render();
     renderCalendar();
     showToast('数据已清空');
@@ -512,6 +758,14 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
 }
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!modalImport.hidden) closeImportPreview();
+  else if (!modalUrge.hidden) closeUrge();
+  else if (!modalDay.hidden) modalDay.hidden = true;
+  else if (!modalCheckin.hidden) closeCheckin();
+});
 
 /* ================= 启动 ================= */
 renderQuote();

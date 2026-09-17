@@ -1,4 +1,4 @@
-const CACHE = 'zhengqi-v1';
+const CACHE = 'zhengqi-v2';
 const ASSETS = [
   './',
   './index.html',
