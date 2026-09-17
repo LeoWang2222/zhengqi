@@ -1,0 +1,4 @@
+# 截图与测试脚本
+shot_*.png
+preview.py
+icons/gen_icons.py

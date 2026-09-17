@@ -1,0 +1,16 @@
+{
+  "name": "正气打卡",
+  "short_name": "正气打卡",
+  "description": "男性戒色自律打卡应用",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef6f3",
+  "theme_color": "#5ba89c",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
