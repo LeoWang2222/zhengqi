@@ -3,6 +3,10 @@
 /* ================= 数据层 ================= */
 const STORE_KEY = 'zhengqi_v1';
 const IMPORT_BACKUP_KEY = 'zhengqi_pre_import_backup_v1';
+const CORRUPT_BACKUP_KEY = 'zhengqi_corrupt_backup_v1';
+let startupWarning = '';
+let dataRevision = 0;
+let recordKeysCache = null;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -31,15 +35,35 @@ function normalizeStoredData(data) {
 }
 
 function loadStore() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return normalizeStoredData(JSON.parse(raw));
-  } catch (e) { /* 数据损坏则重置 */ }
+    raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return { records: {} };
+    const parsed = JSON.parse(raw);
+    if (!isPlainObject(parsed) || !isPlainObject(parsed.records)) throw new Error('invalid store');
+    const normalized = normalizeStoredData(parsed);
+    if (Object.keys(normalized.records).length !== Object.keys(parsed.records).length) {
+      if (!localStorage.getItem(CORRUPT_BACKUP_KEY)) localStorage.setItem(CORRUPT_BACKUP_KEY, raw);
+      startupWarning = '检测到异常记录，已保留原始存档供导出';
+    }
+    return normalized;
+  } catch (e) {
+    if (raw) {
+      try {
+        if (!localStorage.getItem(CORRUPT_BACKUP_KEY)) localStorage.setItem(CORRUPT_BACKUP_KEY, raw);
+        startupWarning = '存档读取失败，原始数据已安全保留';
+      } catch (backupError) {
+        startupWarning = '存档读取失败，请先不要继续打卡并导出浏览器数据';
+      }
+    }
+  }
   return { records: {} };
 }
 function saveStore() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    dataRevision++;
+    recordKeysCache = null;
     return true;
   } catch (err) {
     showToast('保存失败，请先导出备份并检查浏览器存储空间');
@@ -57,7 +81,12 @@ function dateKey(d) {
 function todayKey() { return dateKey(new Date()); }
 function recordKeysThroughToday() {
   const today = todayKey();
-  return Object.keys(store.records).filter(k => k <= today).sort();
+  if (recordKeysCache && recordKeysCache.revision === dataRevision && recordKeysCache.today === today) {
+    return recordKeysCache.keys;
+  }
+  const keys = Object.keys(store.records).filter(k => k <= today).sort();
+  recordKeysCache = { revision: dataRevision, today, keys };
+  return keys;
 }
 function parseKey(k) {
   const [y, m, d] = k.split('-').map(Number);
@@ -67,6 +96,11 @@ function addDays(d, n) {
   const r = new Date(d);
   r.setDate(r.getDate() + n);
   return r;
+}
+
+function calendarDayNumber(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86400000;
 }
 
 /* ================= 统计计算 ================= */
@@ -87,17 +121,12 @@ function streakStartDate() {
 }
 
 function currentStreak() {
-  if (!recordKeysThroughToday().length) return 0;
+  const keys = recordKeysThroughToday();
+  if (!keys.length) return 0;
   const todayK = todayKey();
-  let n = 0;
-  let d = streakStartDate();
-  while (dateKey(d) <= todayK) {
-    const r = store.records[dateKey(d)];
-    if (r && r.type === 'relapse') break;
-    n++;
-    d = addDays(d, 1);
-  }
-  return n;
+  const startK = dateKey(streakStartDate());
+  if (startK > todayK) return 0;
+  return calendarDayNumber(todayK) - calendarDayNumber(startK) + 1;
 }
 
 function longestStreak() {
@@ -175,7 +204,9 @@ const QUOTES = [
 
 function renderQuote() {
   const now = new Date();
-  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+  const dayOfYear = Math.floor(
+    (Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(now.getFullYear(), 0, 0)) / 86400000
+  );
   const idx = dayOfYear % QUOTES.length;
   document.getElementById('quote-text').textContent = QUOTES[idx][0];
   document.getElementById('quote-from').textContent = '—— ' + QUOTES[idx][1];
@@ -229,7 +260,7 @@ function treeSVG(days) {
       <circle cx="64" cy="44" r="3.5" fill="#f7bcc9"/>
       <circle cx="88" cy="42" r="3.5" fill="#f7bcc9"/>`;
   }
-  return `<svg viewBox="0 0 150 150" width="150" height="150">${body}</svg>`;
+  return `<svg viewBox="0 0 150 150" width="150" height="150" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
 function renderGrowthProgress(days) {
@@ -373,6 +404,41 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+/* ================= 弹窗通用行为 ================= */
+const modalReturnFocus = new WeakMap();
+
+function visibleModal() {
+  return [...document.querySelectorAll('.modal-mask')].find(modal => !modal.hidden) || null;
+}
+
+function updateModalBackground(activeModal) {
+  [...document.body.children].forEach(element => {
+    if (element.tagName === 'SCRIPT' || element.id === 'toast') return;
+    element.inert = Boolean(activeModal && element !== activeModal);
+  });
+  document.body.classList.toggle('modal-open', Boolean(activeModal));
+}
+
+function openModal(modal, preferredFocus) {
+  modalReturnFocus.set(modal, document.activeElement);
+  modal.hidden = false;
+  updateModalBackground(modal);
+  requestAnimationFrame(() => {
+    const target = preferredFocus || modal.querySelector('button:not([hidden]):not(:disabled), textarea, input');
+    if (target) target.focus();
+  });
+}
+
+function closeModal(modal, restoreFocus = true) {
+  modal.hidden = true;
+  const activeModal = visibleModal();
+  updateModalBackground(activeModal);
+  if (!activeModal && restoreFocus) {
+    const previous = modalReturnFocus.get(modal);
+    if (previous && previous.isConnected) previous.focus();
+  }
+}
+
 /* ================= 打卡弹窗 ================= */
 const modalCheckin = document.getElementById('modal-checkin');
 const stepChoose = document.getElementById('step-choose');
@@ -389,9 +455,9 @@ function openCheckin(key) {
   document.getElementById('checkin-title').textContent =
     editingKey === todayKey() ? '今天过得怎么样？' : `${editingKey} 的记录`;
   if (rec) prefillNote(rec.type, rec.note || '');
-  modalCheckin.hidden = false;
+  openModal(modalCheckin, rec ? noteInput : document.getElementById('choice-success'));
 }
-function closeCheckin() { modalCheckin.hidden = true; }
+function closeCheckin() { closeModal(modalCheckin); }
 
 function prefillNote(type, note) {
   checkinType = type;
@@ -501,29 +567,39 @@ function openDayModal(key) {
     body.innerHTML = '<div class="day-empty">这一天还没有记录</div>';
     delBtn.hidden = true;
   }
-  modalDay.hidden = false;
+  openModal(modalDay, document.getElementById('day-edit'));
 }
 
 function escapeHTML(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-document.getElementById('day-close').addEventListener('click', () => { modalDay.hidden = true; });
+document.getElementById('day-close').addEventListener('click', () => closeModal(modalDay));
 document.getElementById('day-edit').addEventListener('click', () => {
-  modalDay.hidden = true;
+  closeModal(modalDay, false);
   openCheckin(dayKey);
 });
 document.getElementById('day-delete').addEventListener('click', () => {
+  const deletedKey = dayKey;
   const previous = store.records[dayKey];
   delete store.records[dayKey];
   if (!saveStore()) {
     store.records[dayKey] = previous;
     return;
   }
-  modalDay.hidden = true;
+  closeModal(modalDay);
   render();
   renderCalendar();
-  showToast('已删除该日记录');
+  showToast('已删除该日记录', '撤销', () => {
+    store.records[deletedKey] = previous;
+    if (!saveStore()) {
+      delete store.records[deletedKey];
+      return;
+    }
+    render();
+    renderCalendar();
+    showToast('记录已恢复');
+  });
 });
 
 /* ================= 冲动急救 ================= */
@@ -534,10 +610,12 @@ const urgeTimer = document.getElementById('urge-timer');
 const urgeStatus = document.getElementById('urge-status');
 let urgeInterval = null;
 let urgeSeconds = 60;
+let urgeDeadline = null;
 
 function resetUrge() {
   clearInterval(urgeInterval);
   urgeInterval = null;
+  urgeDeadline = null;
   urgeSeconds = 60;
   urgeTimer.textContent = '60';
   urgeStatus.textContent = '慢慢吸气，再更慢地呼气';
@@ -547,28 +625,36 @@ function resetUrge() {
 }
 
 function closeUrge() {
-  modalUrge.hidden = true;
+  closeModal(modalUrge);
   resetUrge();
 }
 
 document.getElementById('btn-urge').addEventListener('click', () => {
   resetUrge();
-  modalUrge.hidden = false;
+  openModal(modalUrge, document.getElementById('urge-start'));
 });
 document.getElementById('urge-close').addEventListener('click', closeUrge);
+
+function updateUrgeTimer() {
+  if (!urgeDeadline) return;
+  urgeSeconds = Math.max(0, Math.ceil((urgeDeadline - Date.now()) / 1000));
+  urgeTimer.textContent = String(urgeSeconds);
+  if (urgeSeconds <= 0) {
+    clearInterval(urgeInterval);
+    urgeInterval = null;
+    urgeDeadline = null;
+    urgeStatus.textContent = '这一分钟已经过去。现在离开屏幕，去做一件具体的小事。';
+    document.getElementById('urge-finish').textContent = '结束急救';
+  }
+}
+
 document.getElementById('urge-start').addEventListener('click', () => {
   urgeReady.hidden = true;
   urgeRunning.hidden = false;
-  urgeInterval = setInterval(() => {
-    urgeSeconds--;
-    urgeTimer.textContent = String(urgeSeconds);
-    if (urgeSeconds <= 0) {
-      clearInterval(urgeInterval);
-      urgeInterval = null;
-      urgeStatus.textContent = '这一分钟已经过去。现在离开屏幕，去做一件具体的小事。';
-      document.getElementById('urge-finish').textContent = '结束急救';
-    }
-  }, 1000);
+  urgeDeadline = Date.now() + 60000;
+  updateUrgeTimer();
+  urgeInterval = setInterval(updateUrgeTimer, 500);
+  document.getElementById('urge-finish').focus();
 });
 document.getElementById('urge-finish').addEventListener('click', () => {
   closeUrge();
@@ -580,7 +666,7 @@ document.getElementById('urge-finish').addEventListener('click', () => {
   m.addEventListener('click', e => {
     if (e.target !== m) return;
     if (m === modalUrge) closeUrge();
-    else m.hidden = true;
+    else closeModal(m);
   });
 });
 
@@ -610,7 +696,12 @@ function renderLessons() {
 
 /* ================= 数据导入导出 ================= */
 document.getElementById('btn-export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+  const exported = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    records: store.records,
+  };
+  const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -652,10 +743,26 @@ function validateImportData(data) {
 
 function updateRestoreButton() {
   document.getElementById('btn-restore-import').hidden = !localStorage.getItem(IMPORT_BACKUP_KEY);
+  document.getElementById('btn-export-corrupt').hidden = !localStorage.getItem(CORRUPT_BACKUP_KEY);
 }
 
+document.getElementById('btn-export-corrupt').addEventListener('click', () => {
+  const raw = localStorage.getItem(CORRUPT_BACKUP_KEY);
+  if (!raw) return;
+  const blob = new Blob([raw], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `zhengqi-corrupt-backup-${todayKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('异常存档已导出，请妥善保留');
+});
+
 function closeImportPreview() {
-  modalImport.hidden = true;
+  closeModal(modalImport);
   pendingImport = null;
 }
 
@@ -679,7 +786,7 @@ document.getElementById('import-file').addEventListener('change', e => {
       const relapse = records.length - success;
       document.getElementById('import-summary').textContent =
         `文件包含 ${records.length} 条记录：守住 ${success} 条，破戒 ${relapse} 条。`;
-      modalImport.hidden = false;
+      openModal(modalImport, document.getElementById('import-merge'));
     } catch (err) {
       pendingImport = null;
       showToast(`导入失败：${err.message || '文件格式不正确'}`);
@@ -736,8 +843,8 @@ document.getElementById('btn-restore-import').addEventListener('click', () => {
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
-  if (confirm('确定要清空全部数据吗？此操作不可恢复！')) {
-    const previous = store.records;
+  if (confirm('确定要清空全部数据吗？清空后可在 6 秒内撤销。')) {
+    const previous = { ...store.records };
     store.records = {};
     if (!saveStore()) {
       store.records = previous;
@@ -745,35 +852,133 @@ document.getElementById('btn-clear').addEventListener('click', () => {
     }
     render();
     renderCalendar();
-    showToast('数据已清空');
+    showToast('数据已清空', '撤销', () => {
+      store.records = previous;
+      if (!saveStore()) {
+        store.records = {};
+        return;
+      }
+      render();
+      renderCalendar();
+      showToast('全部数据已恢复');
+    });
   }
 });
 
 /* ================= Toast ================= */
 let toastTimer = null;
-function showToast(msg) {
+let toastActionHandler = null;
+function showToast(msg, actionLabel = '', actionHandler = null) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  const message = document.getElementById('toast-message');
+  const action = document.getElementById('toast-action');
+  message.textContent = msg;
+  action.textContent = actionLabel;
+  action.hidden = !actionLabel;
+  toastActionHandler = actionHandler;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+  toastTimer = setTimeout(() => {
+    t.hidden = true;
+    toastActionHandler = null;
+  }, actionLabel ? 6000 : 2200);
 }
 
+document.getElementById('toast-action').addEventListener('click', () => {
+  const handler = toastActionHandler;
+  toastActionHandler = null;
+  clearTimeout(toastTimer);
+  document.getElementById('toast').hidden = true;
+  if (handler) handler();
+});
+
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if (!modalImport.hidden) closeImportPreview();
-  else if (!modalUrge.hidden) closeUrge();
-  else if (!modalDay.hidden) modalDay.hidden = true;
-  else if (!modalCheckin.hidden) closeCheckin();
+  const modal = visibleModal();
+  if (!modal) return;
+  if (e.key === 'Escape') {
+    if (modal === modalImport) closeImportPreview();
+    else if (modal === modalUrge) closeUrge();
+    else if (modal === modalDay) closeModal(modalDay);
+    else if (modal === modalCheckin) closeCheckin();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const focusable = [...modal.querySelectorAll('button:not([hidden]):not(:disabled), textarea, input:not([hidden])')]
+    .filter(element => element.getClientRects().length);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+    e.preventDefault();
+    first.focus();
+  }
 });
 
 /* ================= 启动 ================= */
+let renderedDate = todayKey();
+let midnightTimer = null;
+
+function refreshForDateChange() {
+  updateUrgeTimer();
+  const currentDate = todayKey();
+  if (currentDate === renderedDate) return;
+  renderedDate = currentDate;
+  calCursor = new Date();
+  renderQuote();
+  render();
+  renderCalendar();
+}
+
+function scheduleMidnightRefresh() {
+  clearTimeout(midnightTimer);
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 0, 100);
+  midnightTimer = setTimeout(() => {
+    refreshForDateChange();
+    scheduleMidnightRefresh();
+  }, nextMidnight - new Date());
+}
+
 renderQuote();
 render();
 renderCalendar();
+scheduleMidnightRefresh();
+
+if (startupWarning) showToast(startupWarning);
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshForDateChange();
+});
+window.addEventListener('pageshow', refreshForDateChange);
+window.addEventListener('storage', event => {
+  if (event.key !== STORE_KEY) return;
+  try {
+    const incoming = event.newValue ? normalizeStoredData(JSON.parse(event.newValue)) : { records: {} };
+    store.records = incoming.records;
+    dataRevision++;
+    recordKeysCache = null;
+    render();
+    renderCalendar();
+    showToast('数据已与另一窗口同步');
+  } catch (error) {
+    showToast('另一窗口写入了异常数据，本页未加载');
+  }
+});
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+  const localPreview = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const enableLocalPwa = new URLSearchParams(location.search).has('pwa');
+  window.addEventListener('load', async () => {
+    if (localPreview && !enableLocalPwa) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) await registration.unregister();
+      return;
+    }
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      showToast('离线功能启用失败，联网时仍可正常使用');
+    });
   });
 }

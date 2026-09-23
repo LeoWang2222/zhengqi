@@ -1,12 +1,12 @@
 :root {
-  --teal: #5ba89c;
-  --teal-deep: #4a948a;
+  --teal: #32766d;
+  --teal-deep: #2f7068;
   --teal-light: #8fc9be;
   --teal-bg: #eef6f3;
-  --red: #e8836f;
-  --red-deep: #d96a55;
+  --red: #bd4e3b;
+  --red-deep: #a94232;
   --ink: #2e3d3a;
-  --ink-2: #7d8f8b;
+  --ink-2: #5f706c;
   --card: #ffffff;
   --radius-lg: 26px;
   --radius-md: 18px;
@@ -23,6 +23,7 @@ html, body {
   color: var(--ink);
   overscroll-behavior-y: none;
 }
+body.modal-open { overflow: hidden; }
 
 button {
   font-family: inherit;
@@ -53,7 +54,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 
 /* ---------- 首页头部 ---------- */
 .hero {
-  background: linear-gradient(160deg, #6fb8ac 0%, #8fc9be 55%, #a9d8ce 100%);
+  background: linear-gradient(160deg, #32766d 0%, #377d73 55%, #3a7c73 100%);
   border-radius: 0 0 36px 36px;
   padding: 28px 20px 34px;
   text-align: center;
@@ -153,7 +154,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   padding: 20px;
   border-radius: 999px;
   color: #fff;
-  background: linear-gradient(135deg, #63b3a6 0%, #4a948a 100%);
+  background: linear-gradient(135deg, #377d73 0%, #2f7068 100%);
   box-shadow: 0 12px 28px rgba(74, 148, 138, 0.4), inset 0 1px 0 rgba(255,255,255,0.35);
   transition: transform 0.22s var(--ease-spring), box-shadow 0.22s ease, filter 0.22s ease;
   user-select: none;
@@ -169,6 +170,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 
 .btn-checkin.done {
   background: linear-gradient(135deg, #9fd3c8 0%, #7cbcb0 100%);
+  color: var(--ink);
   box-shadow: 0 8px 20px rgba(74, 148, 138, 0.25);
 }
 
@@ -420,12 +422,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 }
 .choice:active { transform: scale(0.96); filter: brightness(1.05); }
 .choice.ok {
-  background: linear-gradient(135deg, #63b3a6, #4a948a);
+  background: linear-gradient(135deg, #377d73, #2f7068);
   color: #fff;
   box-shadow: 0 10px 22px rgba(74, 148, 138, 0.35);
 }
 .choice.bad {
-  background: linear-gradient(135deg, #f0977f, #d96a55);
+  background: linear-gradient(135deg, #bd4e3b, #a94232);
   color: #fff;
   box-shadow: 0 10px 22px rgba(217, 106, 85, 0.32);
 }
@@ -471,7 +473,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   width: 100%;
   padding: 16px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #63b3a6, #4a948a);
+  background: linear-gradient(135deg, #377d73, #2f7068);
   color: #fff;
   font-size: 16.5px;
   font-weight: 700;
@@ -482,7 +484,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   -webkit-user-select: none;
 }
 .btn-submit:active { transform: scale(0.955); box-shadow: 0 4px 12px rgba(74,148,138,0.3); filter: brightness(1.06); }
-.btn-submit.bad { background: linear-gradient(135deg, #f0977f, #d96a55); box-shadow: 0 10px 22px rgba(217, 106, 85, 0.35); }
+.btn-submit.bad { background: linear-gradient(135deg, #bd4e3b, #a94232); box-shadow: 0 10px 22px rgba(217, 106, 85, 0.35); }
 
 /* 某日详情 */
 .day-record {
@@ -609,11 +611,29 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   text-align: center;
   white-space: normal;
   letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 #toast[hidden] { display: none; }
+#toast-action {
+  flex-shrink: 0;
+  color: #bde5dc;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(-50%) translateY(12px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@media (max-width: 340px) {
+  #page-calendar { padding-left: 0; padding-right: 0; }
+  .cal-grid { gap: 2px; }
+  .cal-cell { border-radius: 12px; font-size: 14px; }
+  .cal-legend { gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

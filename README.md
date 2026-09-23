@@ -25,6 +25,8 @@ python -m http.server 8000
 # 浏览器打开 http://localhost:8000
 ```
 
+本地预览默认不注册 Service Worker，避免旧缓存干扰开发。需要专门测试离线安装时，打开 `http://localhost:8000/?pwa=1`；不同项目请避免复用同一个本地端口。
+
 ## 技术
 
 - 原生 HTML / CSS / JS，零依赖
