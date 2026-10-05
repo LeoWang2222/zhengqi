@@ -214,53 +214,55 @@ function renderQuote() {
 
 /* ================= 树动画 ================= */
 function treeSVG(days) {
-  // 阶段：0 种子土堆 / 1-6 发芽 / 7-29 小苗 / 30-99 小树 / 100+ 开花大树
-  const s = 'stroke="#4a948a" stroke-width="3.5" stroke-linecap="round" fill="none"';
+  // 与图标保持一致：金色种子、暖白叶片、日轮，随坚持天数逐渐生长。
+  const stem = 'fill="none" stroke="#f3ead5" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"';
+  const leaf = (x, y, scale, side = 1, angle = 0) => `
+    <g transform="translate(${x} ${y}) rotate(${angle}) scale(${scale * side} ${scale})">
+      <path d="M0 0 C-17 -1 -30 -14 -34 -35 C-12 -33 4 -18 0 0Z" fill="#f8f1df"/>
+      <path d="M-3 -4 Q-10 -14 -24 -25" fill="none" stroke="#29675e" stroke-width="1.5" stroke-linecap="round"/>
+    </g>`;
+  const seed = `<path d="M75 113 C71 119 69 124 70 127 C71 132 79 132 80 127 C81 124 79 119 75 113Z" fill="#dfc57e" stroke="#f8f1df" stroke-width="1.6"/>`;
+  const ground = `<ellipse cx="75" cy="132" rx="27" ry="5.5" fill="none" stroke="#f3ead5" stroke-width="1.4" opacity=".6"/><path d="M61 132 Q75 137 89 132" fill="none" stroke="#dfc57e" stroke-width="1.4" stroke-linecap="round" opacity=".75"/>`;
+  const sun = `<circle cx="77" cy="57" r="32" fill="#dec783" opacity=".12"/><circle cx="77" cy="57" r="31.5" fill="none" stroke="#e4d09c" stroke-width=".7" opacity=".2"/>`;
   let body = '';
   if (days <= 0) {
-    body = `
-      <ellipse cx="75" cy="128" rx="30" ry="8" fill="#c9a876"/>
-      <ellipse cx="75" cy="122" rx="9" ry="6" fill="#8a6b45"/>`;
+    body = `<path d="M75 103 C69 111 64 118 65 124 C66 137 84 137 85 124 C86 118 81 111 75 103Z" fill="#dfc57e" stroke="#f8f1df" stroke-width="2"/><path d="M69 119 Q67 127 73 130" fill="none" stroke="#f8f1df" stroke-width="1.4" stroke-linecap="round" opacity=".7"/>`;
   } else if (days < 7) {
     body = `
-      <ellipse cx="75" cy="128" rx="30" ry="8" fill="#c9a876"/>
-      <path d="M75 122 Q75 105 75 98" ${s}/>
-      <path d="M75 106 Q64 100 60 90" ${s}/>
-      <path d="M75 106 Q86 100 90 90" ${s}/>
-      <ellipse cx="59" cy="88" rx="7" ry="4" fill="#7cbc6b" transform="rotate(-35 59 88)"/>
-      <ellipse cx="91" cy="88" rx="7" ry="4" fill="#7cbc6b" transform="rotate(35 91 88)"/>`;
+      <path d="M75 122 C78 114 73 103 75 91" ${stem}/>
+      ${leaf(75, 103, .65)}
+      ${leaf(75, 100, .72, -1)}
+      ${seed}`;
   } else if (days < 30) {
     body = `
-      <ellipse cx="75" cy="130" rx="34" ry="8" fill="#c9a876"/>
-      <path d="M75 130 Q74 105 75 78" ${s}/>
-      <path d="M75 100 Q60 94 54 80" ${s}/>
-      <path d="M75 96 Q90 90 96 76" ${s}/>
-      <ellipse cx="52" cy="76" rx="10" ry="6" fill="#6bb362" transform="rotate(-40 52 76)"/>
-      <ellipse cx="98" cy="72" rx="10" ry="6" fill="#6bb362" transform="rotate(40 98 72)"/>
-      <ellipse cx="75" cy="70" rx="9" ry="6" fill="#7cbc6b"/>`;
+      <path d="M75 122 C69 108 80 91 76 72" ${stem}/>
+      ${leaf(75, 106, 1.04)}
+      ${leaf(76, 100, 1.12, -1)}
+      ${leaf(77, 79, .45, 1, 45)}
+      ${seed}`;
   } else if (days < 100) {
     body = `
-      <ellipse cx="75" cy="132" rx="36" ry="8" fill="#c9a876"/>
-      <path d="M75 132 L75 88" stroke="#8a6b45" stroke-width="5" stroke-linecap="round"/>
-      <path d="M75 104 L60 90 M75 100 L90 86" stroke="#8a6b45" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="60" cy="74" r="16" fill="#6bb362"/>
-      <circle cx="90" cy="70" r="16" fill="#6bb362"/>
-      <circle cx="75" cy="56" r="18" fill="#7cbc6b"/>`;
+      <path d="M75 124 C65 107 82 78 76 48" ${stem}/>
+      ${leaf(73, 111, .95, 1, -9)}
+      ${leaf(75, 103, 1.08, -1, 7)}
+      ${leaf(76, 87, .86, 1, -5)}
+      ${leaf(78, 73, .86, -1, 4)}
+      ${leaf(77, 57, .55, 1, 45)}
+      ${seed}`;
   } else {
     body = `
-      <ellipse cx="75" cy="132" rx="38" ry="8" fill="#c9a876"/>
-      <path d="M75 132 L75 86" stroke="#8a6b45" stroke-width="6" stroke-linecap="round"/>
-      <path d="M75 104 L58 88 M75 100 L92 84" stroke="#8a6b45" stroke-width="4.5" stroke-linecap="round"/>
-      <circle cx="56" cy="72" r="17" fill="#6bb362"/>
-      <circle cx="94" cy="68" r="17" fill="#6bb362"/>
-      <circle cx="75" cy="52" r="20" fill="#7cbc6b"/>
-      <circle cx="50" cy="60" r="4" fill="#f2a0b5"/>
-      <circle cx="98" cy="56" r="4" fill="#f2a0b5"/>
-      <circle cx="75" cy="38" r="4.5" fill="#f2a0b5"/>
-      <circle cx="64" cy="44" r="3.5" fill="#f7bcc9"/>
-      <circle cx="88" cy="42" r="3.5" fill="#f7bcc9"/>`;
+      <path d="M75 124 C64 105 84 75 77 33" ${stem}/>
+      ${leaf(73, 113, 1.08, 1, -15)}
+      ${leaf(74, 106, 1.1, -1, 13)}
+      ${leaf(76, 89, .97, 1, -9)}
+      ${leaf(79, 76, .99, -1, 9)}
+      ${leaf(78, 62, .71, 1, -3)}
+      ${leaf(78, 49, .6, -1, 2)}
+      <path d="M77 34 C66 29 68 20 70 18 C73 22 76 23 77 26 C79 21 83 19 85 17 C87 27 84 33 77 34Z" fill="#e4cd8c"/>
+      <path d="M77 33 Q77 27 79 23" fill="none" stroke="#faf2df" stroke-width="1.1" stroke-linecap="round"/>
+      ${seed}`;
   }
-  return `<svg viewBox="0 0 150 150" width="150" height="150" aria-hidden="true" focusable="false">${body}</svg>`;
+  return `<svg viewBox="0 0 150 150" width="150" height="150" aria-hidden="true" focusable="false">${sun}${ground}${body}</svg>`;
 }
 
 function renderGrowthProgress(days) {
@@ -305,6 +307,10 @@ function renderGrowthProgress(days) {
 
 /* ================= 渲染 ================= */
 function render() {
+  const now = new Date();
+  const homeDate = document.getElementById('home-date');
+  homeDate.dateTime = dateKey(now);
+  homeDate.textContent = `${now.getMonth() + 1}月${now.getDate()}日\n星期${'日一二三四五六'[now.getDay()]}`;
   const streak = currentStreak();
   document.getElementById('streak-days').textContent = streak;
   document.getElementById('zq-score').textContent = zhengqiScore();
@@ -339,6 +345,37 @@ function render() {
 
 /* ================= 月历 ================= */
 let calCursor = new Date();
+let calSelectedKey = todayKey();
+
+function renderCalendarDetail() {
+  const key = calSelectedKey;
+  const date = parseKey(key);
+  const rec = store.records[key];
+  document.getElementById('selected-day-title').textContent =
+    `${date.getMonth() + 1}月${date.getDate()}日${key === todayKey() ? ' · 今天' : ''}`;
+  const status = document.getElementById('selected-day-status');
+  status.className = 'record-badge' + (rec ? (rec.type === 'success' ? ' ok' : ' bad') : '');
+  status.textContent = rec ? (rec.type === 'success' ? '守住了' : '已记下教训') : '还未记录';
+  document.getElementById('selected-day-body').textContent = rec
+    ? rec.note || (rec.type === 'success' ? '守住这一天，就是一次向前。' : '这一天已记录，继续重新出发。')
+    : '这一天还没有记录。\n可以留下一点心情，也可以让它留白。';
+  document.getElementById('calendar-action-text').textContent = rec ? '查看 / 修改记录' : '记录这一天';
+}
+
+function selectCalendarDay(key) {
+  calSelectedKey = key;
+  document.querySelectorAll('#cal-grid button').forEach(button => {
+    const selected = button.dataset.date === key;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  renderCalendarDetail();
+}
+
+document.getElementById('calendar-detail-action').addEventListener('click', () => {
+  if (store.records[calSelectedKey]) openDayModal(calSelectedKey);
+  else openCheckin(calSelectedKey);
+});
 
 function renderCalendar() {
   const y = calCursor.getFullYear();
@@ -350,6 +387,11 @@ function renderCalendar() {
   const first = new Date(y, m, 1);
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const tk = todayKey();
+  const monthPrefix = dateKey(new Date(y, m, 1)).slice(0, 7);
+  const monthKeys = recordKeysThroughToday().filter(key => key.startsWith(monthPrefix));
+  if (!calSelectedKey.startsWith(monthPrefix) || calSelectedKey > tk) {
+    calSelectedKey = tk.startsWith(monthPrefix) ? tk : monthKeys[monthKeys.length - 1] || `${monthPrefix}-01`;
+  }
   const nextButton = document.getElementById('cal-next');
   const today = new Date();
   nextButton.disabled = y > today.getFullYear() || (y === today.getFullYear() && m >= today.getMonth());
@@ -357,6 +399,7 @@ function renderCalendar() {
   for (let i = 0; i < first.getDay(); i++) {
     const c = document.createElement('div');
     c.className = 'cal-cell empty';
+    c.setAttribute('aria-hidden', 'true');
     grid.appendChild(c);
   }
   for (let d = 1; d <= daysInMonth; d++) {
@@ -364,19 +407,25 @@ function renderCalendar() {
     const rec = store.records[key];
     const c = document.createElement('button');
     const isFuture = key > tk;
-    c.className = 'cal-cell' + (key === tk ? ' today' : '') + (isFuture ? ' future' : '');
+    c.className = 'cal-cell' + (rec ? ` ${rec.type}` : '') + (key === tk ? ' today' : '') + (key === calSelectedKey ? ' selected' : '') + (isFuture ? ' future' : '');
     c.disabled = isFuture;
+    c.dataset.date = key;
+    c.setAttribute('aria-pressed', String(key === calSelectedKey));
     c.setAttribute('aria-label', `${key}${rec ? (rec.type === 'success' ? '，守住了' : '，破戒了') : '，无记录'}`);
-    let inner = `<span>${d}</span>`;
+    let inner = `<span class="cal-day-number">${d}</span>`;
     if (rec) {
       inner += rec.type === 'success'
-        ? '<span class="mark ok">✓</span>'
-        : '<span class="mark bad">破</span>';
+        ? '<span class="mark ok" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M10 2C4 1 1 4 3 8c1 2 7 2 7-6ZM2 11 8 4"/></svg></span>'
+        : '<span class="mark bad" aria-hidden="true">·</span>';
     }
     c.innerHTML = inner;
-    if (!isFuture) c.addEventListener('click', () => openDayModal(key));
+    if (!isFuture) c.addEventListener('click', () => selectCalendarDay(key));
     grid.appendChild(c);
   }
+  const monthSuccess = monthKeys.filter(key => store.records[key].type === 'success').length;
+  document.getElementById('cal-month-summary').textContent =
+    `本月守住 ${monthSuccess} 天 · 已记录 ${monthKeys.length} 天`;
+  renderCalendarDetail();
 }
 
 document.getElementById('cal-prev').addEventListener('click', () => {
@@ -576,8 +625,10 @@ function escapeHTML(s) {
 
 document.getElementById('day-close').addEventListener('click', () => closeModal(modalDay));
 document.getElementById('day-edit').addEventListener('click', () => {
+  const returnFocus = modalReturnFocus.get(modalDay);
   closeModal(modalDay, false);
   openCheckin(dayKey);
+  if (returnFocus) modalReturnFocus.set(modalCheckin, returnFocus);
 });
 document.getElementById('day-delete').addEventListener('click', () => {
   const deletedKey = dayKey;
@@ -927,6 +978,7 @@ function refreshForDateChange() {
   if (currentDate === renderedDate) return;
   renderedDate = currentDate;
   calCursor = new Date();
+  calSelectedKey = currentDate;
   renderQuote();
   render();
   renderCalendar();

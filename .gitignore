@@ -2,3 +2,11 @@
 shot_*.png
 preview.py
 icons/gen_icons.py
+
+# 本地交接文档与私人数据，不进入公开仓库
+PROJECT_HANDOFF.md
+zhengqi-backup-*.json
+zhengqi-corrupt-backup-*.json
+*.local.json
+.env
+.env.*
